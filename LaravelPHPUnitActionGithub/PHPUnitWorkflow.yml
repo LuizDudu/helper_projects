@@ -1,0 +1,54 @@
+name: PHPUnit Tests
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  phpunit:
+    runs-on: ubuntu-latest
+    container:
+      # This image has already mssql-tools installed along with php 8.0, you can check it for more tags
+      image: namoshek/php-mssql:8.0-cli
+
+    services:
+      mssql:
+        # Using the oficial image from microsoft you can ser for it in dockerhub
+        image: mcr.microsoft.com/mssql/server:2017-latest
+        env:
+          SA_PASSWORD: YourStrong!Passw0rd
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+          # You have to name the mssql to use in the connection, in this case I am using mssql, so your host will be "mssql"
+          # And you have to check if the mssql is available, the checking can take up 30 seconds
+          # If you feel like you can remove it, but sometimes it gives me error
+        options: --name=mssql --health-cmd="/opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P 'YourStrong!Passw0rd' -Q 'SELECT 1'" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
+
+    # Creating a database for tests
+    - name: Create Database
+      run: |
+        /opt/mssql-tools/bin/sqlcmd -S mssql -U SA -P 'YourStrong!Passw0rd' -Q 'CREATE DATABASE tests'
+
+    - name: Install composer dependencies
+      run: |
+        composer install --no-scripts
+
+    # In this case I am using the .env.ci.unit.tests to have a standard connection 
+    # The example .env.ci.unit.tests are in this project folder
+    - name: Prepare Laravel Application
+      run: |
+        cp .env.ci.unit.tests .env
+        php artisan key:generate
+
+    # When running your tests change the path from "tests/Feature/ExampleTest.php" to "tests"
+    - name: Run Tests
+      run: vendor/bin/phpunit tests/Feature/ExampleTest.php
